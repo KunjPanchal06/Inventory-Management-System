@@ -1,64 +1,62 @@
-# Inventory Management System
+# Inventory Management System (IMS)  
 
-This project is a **role-based Inventory Management System** built using Python and MySQL. It provides tools for managing inventory, tracking sales and purchases, and generating insightful reports to streamline business operations.
+## 📌 Project Overview  
+The **Inventory Management System (IMS)** is a **Flask-based web application** that enables businesses to efficiently manage their inventory, track product stock levels, record sales and purchases, and generate reports.  
 
-## 🚀 Features
+## 🔹 Features  
+✅ **User Authentication** – Secure login/logout system  
+✅ **Product Management** – Add, edit, and delete products  
+✅ **Stock Management** – Track product quantities in real time  
+✅ **Sales Recording** – Record sales transactions and update stock accordingly  
+✅ **Purchases Recording** – Record new product purchases and increase stock  
+✅ **Monthly & Stock Reports** – Generate detailed reports for sales and inventory  
 
-### 📦 Inventory Management
-- View available products in a tabular format.
-- Add, edit, and delete product details.
+## 🛠️ Tech Stack  
+- **Backend:** Flask (Python)  
+- **Frontend:** HTML, CSS, Bootstrap  
+- **Database:** MySQL with MySQL Connector  
+- **Tools & Libraries:** Flask-Flash, Flask-Session  
 
-### 🔑 Role-Based Access Control
-- **Admin Role**: Full access to all features, including reporting and transactions.
-- **Staff Role**: Limited access to inventory management tasks.
+## 📂 Project Structure  
+/IMS │── /templates # HTML Templates
+│ ├── add_product.html
+│ ├── dashboard.html
+│ ├── edit_product.html
+│ ├── record_sales.html
+│ ├── record_purchases.html
+│ ├── monthly_report.html
+│ ├── stock_report.html
+│ ├── view_product.html
+│── /static # Static files (CSS, JS)
+│── main.py # Flask application
+│── database.sql # SQL file to set up MySQL DB
+│── README.md # Project documentation
 
-### 📊 Reporting
-- **Monthly Sales Report**: Summarizes sales data for better decision-making.
-- **Stock Report**: Displays current inventory levels.
 
-### 💰 Transactions
-- Record sales to update stock levels automatically.
-- Record purchases to add new stock to the inventory.
+## 🚀 Installation & Setup  
+### 1️⃣ Clone the Repository  
+```bash
+git clone https://github.com/yourusername/inventory-management.git
+cd inventory-management
+```
 
-## 🛠️ Tech Stack
-- **Python**: Backend logic and user interaction.
-- **MySQL**: Database management for secure and efficient data handling.
-- **PrettyTable**: Used for displaying data in a clean tabular format.
-- **Flask Framework** (Future Integration): Transforming the system into a web application.
-- **HTML & CSS** (Future Development): Building a visually appealing and intuitive user interface.
+### 2️⃣ Install Dependencies
+```bash
+pip install flask mysql-connector-python
+```
 
-## 📂 Database Setup
-Ensure your MySQL database is set up with the following tables:
+### 3️⃣ Set Up MySQL Database
+Create a MySQL database
+Run the database.sql file
+Update main.py with your MySQL credentials
 
-### `users` Table
-| Column    | Type          | Description                |
-|-----------|---------------|----------------------------|
-| id        | INT (Primary Key) | Unique user ID            |
-| username  | VARCHAR(50)   | User's login name          |
-| password  | VARCHAR(50)   | User's password            |
-| role      | VARCHAR(10)   | Role: `admin` or `staff`   |
+###4️⃣ Run the Application
+```bash
+python main.py
+```
 
-### `products` Table
-| Column           | Type          | Description                |
-|-------------------|---------------|----------------------------|
-| id               | INT (Primary Key) | Unique product ID         |
-| product_name      | VARCHAR(100)  | Name of the product        |
-| product_quantity  | INT           | Available quantity         |
-| product_price     | DECIMAL(10, 2)| Price per unit             |
+##📈 Future Improvements
+Add REST API endpoints for external integrations
+Implement role-based access control (RBAC) for different user roles
+Integrate barcode scanning for inventory tracking
 
-### `transactions` Table
-| Column           | Type            | Description                |
-|-------------------|-----------------|----------------------------|
-| id               | INT (Primary Key) | Unique transaction ID      |
-| product_id       | INT             | ID of the product involved |
-| quantity         | INT             | Quantity sold/purchased    |
-| total_price      | DECIMAL(10, 2)  | Total cost of transaction  |
-| transaction_date | DATETIME        | Date and time of transaction |
-
-## 🔧 Configuration
-1. Replace the following placeholders in the code with your MySQL credentials:
-   ```python
-   userName = "your_username"
-   passWord = "your_password"
-   hostName = "your_hostName"
-   databaseName = "your_databaseName"
