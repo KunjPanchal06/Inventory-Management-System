@@ -1,6 +1,9 @@
+from flask import Flask, render_template, request, url_for, redirect, session, flash
 import mysql.connector
-from prettytable import PrettyTable
 from datetime import datetime
+
+app = Flask(__name__)
+app.secret_key = "Kunj@2006"
 
 userName = "root"
 passWord = "root"
@@ -29,316 +32,303 @@ class Database:
         )
         return conn
 
-class Menu:
-    @staticmethod
-    def displayStartMenu():
-        print("------------------Inventory Management System------------------")
-        print("1. Login")
-        print("2. Register")
-        print("3. Exit")
-
-    @staticmethod
-    def displayStaffMenu():
-        print("------------------Inventory Management System------------------")
-        print("1. View Products")
-        print("2. Add Product")
-        print("3. Edit Product")
-        print("4. Delete Product")
-        print("5. Back")
-
-    @staticmethod
-    def displayAdminMenu():
-        print("------------------Inventory Management System------------------")
-        print("1. View Products")
-        print("2. Add Product")
-        print("3. Edit Product")
-        print("4. Delete Product")
-        print("5. Generate Monthly Report")
-        print("6. Generate Stock Report")
-        print("7. Record Sales")
-        print("8. Record Purchases")
-        print("9. Back")
-
 class Authentication:
-    @staticmethod
-    def login():
-        username = input("Enter your Username: ")
-        password = input("Enter your Password: ")
+    @app.route('/auth', methods=['GET', 'POST'])
+    def auth():
+        if request.method == 'POST':
+            action = request.form.get('action')  # Login or Register
+            username = request.form['username']
+            password = request.form['password']
+
+            conn = Database.getConnection()
+            cursor = conn.cursor(dictionary=True)
+
+            if action == "Login":
+                cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
+                user = cursor.fetchone()
+                cursor.close()
+                conn.close()
+
+                if user:
+                    session['user'] = user['username']
+                    session['role'] = user['role']
+                    flash("Login successful!", "success")
+                    return redirect(url_for('dashboard'))
+                else:
+                    flash("Invalid username or password. Please try again.", "danger")
+
+            elif action == "Register":
+                role = request.form['role'].lower()
+
+                if role not in ["admin", "staff"]:
+                    flash("Invalid role. Please enter 'Admin' or 'Staff'.", "danger")
+                    return redirect(url_for('auth'))
+
+                try:
+                    cursor.execute("INSERT INTO users (username, password, role) VALUES (%s, %s, %s)", 
+                                (username, password, role))
+                    conn.commit()
+                    session['user'] = username
+                    session['role'] = role
+                    flash("Registration successful! You are now logged in.", "success")
+                    return redirect(url_for('dashboard'))
+                except mysql.connector.IntegrityError:
+                    flash("Username already exists. Please choose a different one.", "danger")
+                finally:
+                    cursor.close()
+                    conn.close()
+
+        return render_template('auth.html')
+    
+@app.route('/')
+def home():
+    return render_template('home.html')
+
+@app.route('/dashboard')
+def dashboard():
+    if 'user' not in session: 
+        return redirect(url_for('auth'))  
+    return render_template('dashboard.html')
+
+@app.route('/view_product')
+def viewProduct():
+    conn = Database.getConnection()
+    cursor = conn.cursor(dictionary=True) 
+    cursor.execute("SELECT id, product_name, product_quantity, product_price FROM products")
+    products = cursor.fetchall()
+    conn.close()
+    return render_template('view_product.html', products=products)
+
+@app.route("/delete_product/<int:product_id>")
+def delete_product(product_id):
+    conn = Database.getConnection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM products WHERE id = %s", (product_id,))
+    conn.commit()
+    conn.close()
+    flash("Product deleted successfully!", "success")
+    return redirect(url_for("viewProduct"))
+
+@app.route("/edit_product/<int:product_id>", methods=["GET", "POST"])
+def edit_product(product_id):
+    conn = Database.getConnection()
+    cursor = conn.cursor(dictionary=True)  # Fetch results as dictionaries
+
+    if request.method == "POST":
+        product_name = request.form["product_name"]
+        product_price = request.form["product_price"]
+        product_quantity = request.form["product_quantity"]
+
+        # Update query
+        query = """
+        UPDATE products
+        SET product_name = %s, product_price = %s, product_quantity = %s
+        WHERE id = %s
+        """
+        cursor.execute(query, (product_name, product_price, product_quantity, product_id))
+        conn.commit()  # Save changes
+
+        flash("Product updated successfully!", "success")
+        cursor.close()
+        conn.close()
+        return redirect(url_for("viewProduct"))  # Redirect to product list
+
+    # Fetch product details for pre-filling the form
+    cursor.execute("SELECT * FROM products WHERE id = %s", (product_id,))
+    product = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    if product:
+        return render_template("edit_product.html", product=product)
+    else:
+        flash("Product not found!", "danger")
+        return redirect(url_for("viewProduct"))
+
+
+@app.route('/add_product', methods=['GET', 'POST'])
+def addProduct():
+    if request.method == 'POST':
+        product_name = request.form['product_name']
+        category = request.form['category']
+        price = request.form['price']
+        quantity = request.form['quantity']
 
         conn = Database.getConnection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
-        user = cursor.fetchone()
-        cursor.close()
+        cursor.execute("INSERT INTO products (product_name, category, price, quantity) VALUES (?, ?, ?, ?)", 
+                     (product_name, category, price, quantity))
+        conn.commit()
         conn.close()
 
-        if user:
-            print(f"Login Successful. Welcome {username}")
-            role = user[3]
-            return True, role
+        flash("Product added successfully.", 'success')
+        return redirect(url_for('dashboard'))
+    
+    return render_template('add_product.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('user', None)  # Remove user from session
+    return redirect(url_for('auth'))
+
+@app.route('/monthly_report')
+def monthly_report():
+    conn = Database.getConnection()
+    cursor = conn.cursor(dictionary=True)
+
+    # Get the current month and year
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+
+    # SQL query to get sales data for the current month
+    query = """
+    SELECT p.product_name AS product_name, 
+       SUM(t.quantity) AS total_quantity, 
+       SUM(t.total_price) AS total_sales
+    FROM transactions t
+    JOIN products p ON t.product_id = p.id
+    WHERE t.transaction_type = 'sale' 
+        AND MONTH(t.transaction_date) = %s
+        AND YEAR(t.transaction_date) = %s
+    GROUP BY p.product_name;
+
+
+    """
+    
+    cursor.execute(query, (current_month, current_year))
+    sales_data = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template('monthly_report.html', sales_data=sales_data)
+
+@app.route('/stock_report')
+def stock_report():
+    conn = Database.getConnection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT product_name, product_quantity, product_price FROM products")
+    stock_data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template('stock_report.html', stock_data=stock_data)
+
+from datetime import datetime
+
+@app.route('/record_sales', methods=['GET', 'POST'])
+def record_sales():
+    conn = Database.getConnection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # Fetch available products (with stock > 0)
+    cursor.execute("SELECT id, product_name, product_quantity, product_price FROM products WHERE product_quantity > 0")
+    products = cursor.fetchall()
+    
+    if request.method == 'POST':
+        product_id = request.form['product_id']
+        quantity = int(request.form['quantity'])
+        customer_name = request.form['customer']
+        transaction_date = request.form['date']  # Get transaction date from form
+
+        # Get product details
+        cursor.execute("SELECT product_price, product_quantity FROM products WHERE id = %s", (product_id,))
+        product = cursor.fetchone()
+
+        if not product:
+            flash("Invalid product selection.", "danger")
+        elif quantity > product['product_quantity']:
+            flash("Not enough stock available!", "danger")
         else:
-            print("Invalid username or password. Please try again.")
-            return False
+            total_price = product['product_price'] * quantity
 
-    @staticmethod
-    def register():
-        username = input("Enter your Username: ")
-        password = input("Enter your Password: ")
-        role = input("Enter your Role (Admin/Staff): ").lower()
+            # Insert the sales record into transactions table
+            cursor.execute("""
+                INSERT INTO transactions (product_id, quantity, total_price, transaction_date, transaction_type, customer_name)
+                VALUES (%s, %s, %s, %s, 'sale', %s)
+            """, (product_id, quantity, total_price, transaction_date, customer_name))
 
-        if role not in ["admin", "staff"]:
-            print("Invalid role. Please enter 'Admin' or 'Staff'.")
-            return
-
-        conn = Database.getConnection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute("INSERT INTO users (username, password, role) VALUES (%s, %s, %s)",
-                           (username, password, role))
+            # Update product stock
+            cursor.execute("UPDATE products SET product_quantity = product_quantity - %s WHERE id = %s", 
+                           (quantity, product_id))
             conn.commit()
-            print("Registration Successful")
-        except mysql.connector.IntegrityError:
-            print("Username already exists. Please try again.")
-        finally:
-            cursor.close()
-            conn.close()
+            flash("Sale recorded successfully!", "success")
 
+    cursor.execute("""
+        SELECT t.transaction_id, p.product_name, t.quantity, t.total_price, t.transaction_date, t.customer_name
+        FROM transactions t
+        JOIN products p ON t.product_id = p.id
+        WHERE t.transaction_type = 'sale'
+        ORDER BY t.transaction_date DESC
+    """)
+    sales_records = cursor.fetchall()
+    
+    conn.close()
+    return render_template('record_sales.html', products=products, sales_records = sales_records)
 
-class Product:
-    @staticmethod
-    def viewProducts():
-        conn = Database.getConnection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM products")
-        products = cursor.fetchall()
-        table = PrettyTable()
-        table.field_names = ["Product ID", "Product Name", "Product Quantity", "Product Price"]
-        for product in products:
-            table.add_row(product)
-        print(table)
-        cursor.close()
-        conn.close()
+@app.route('/record_purchase', methods=['GET', 'POST'])
+def record_purchase():
+    conn = Database.getConnection()
+    cursor = conn.cursor(dictionary=True)
 
-    @staticmethod
-    def addProduct():
-        conn = Database.getConnection()
-        cursor = conn.cursor()
-        product_name = input("Enter the name of the product: ")
-        product_quantity = input("Enter the quantity of the product: ")
-        product_price = input("Enter the price of the product: ")
-        cursor.execute("INSERT INTO products (product_name, product_quantity, product_price) VALUES (%s, %s, %s)", (product_name,product_quantity, product_price))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        print("Product added successfully.")
+    # Fetch existing products for the dropdown
+    cursor.execute("SELECT id, product_name FROM products")
+    products = cursor.fetchall()
 
-    @staticmethod
-    def editProduct():
-        conn = Database.getConnection()
-        cursor = conn.cursor()
-        product_id = input("Enter the ID of the product to edit: ")
-        product_name = input("Enter the new name of the product: ")
-        product_quantity = input("Enter the new quantity of the product: ")
-        product_price = input("Enter the new price of the product: ")
-        cursor.execute("UPDATE products SET product_name = %s, product_quantity = %s, product_price = %s WHERE id = %s", (product_name,product_quantity, product_price, product_id))
-        conn.commit()
-        cursor.close()
-        conn.close()
+    if request.method == 'POST':
+        product_id = request.form.get('product_id')
+        new_product_name = request.form.get('new_product_name')
+        quantity = int(request.form['quantity'])
+        price = float(request.form['price'])
+        date = request.form['date']
+        supplier = request.form['supplier']
 
-    @staticmethod
-    def deleteProduct():
-        conn = Database.getConnection()
-        cursor = conn.cursor()
-        product_id = input("Enter the ID of the product to delete: ")
-        cursor.execute("DELETE FROM products WHERE id = %s", (product_id,))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        print("Product deleted successfully.")
+        # If the user selects an existing product
+        if product_id and product_id != "new":
+            cursor.execute("SELECT * FROM products WHERE id = %s", (product_id,))
+            product = cursor.fetchone()
 
-class Report:
-    @staticmethod
-    def generateMonthlyReport():
-        today = datetime.today().date()
-        month_start = today.replace(day=1)
-        conn = Database.getConnection()
-        cursor = conn.cursor()
+            if product:
+                # Update existing product stock
+                cursor.execute("UPDATE products SET product_quantity = product_quantity + %s WHERE id = %s",
+                               (quantity, product_id))
+            else:
+                flash("Invalid product selection.", "danger")
+                return redirect(url_for('record_purchase'))
+
+        # If the user adds a new product
+        elif new_product_name:
+            cursor.execute("INSERT INTO products (product_name, product_quantity, product_price) VALUES (%s, %s, %s)",
+                           (new_product_name, quantity, price))
+            conn.commit()
+            product_id = cursor.lastrowid  # Get the new product ID
+
+        else:
+            flash("Please select a product or add a new one.", "danger")
+            return redirect(url_for('record_purchase'))
+
+        # Insert into transactions table
         cursor.execute("""
-                    SELECT p.product_name, SUM(t.quantity) AS total_quantity, SUM(t.total_price) AS total_sales
-                    FROM transactions t
-                    JOIN products p ON t.product_id = p.id
-                    WHERE DATE(t.transaction_date) >= %s
-                    GROUP BY p.product_name
-                """, (month_start,))
+            INSERT INTO transactions (product_id, quantity, total_price, transaction_date, transaction_type, supplier_name)
+            VALUES (%s, %s, %s, %s, 'purchase', %s)
+        """, (product_id, quantity, price * quantity, date, supplier))
 
-        sales_data = cursor.fetchall()
-        table = PrettyTable()
-        table.field_names = ["Product Name", "Quantity Sold", "Total Sales"]
+        conn.commit()
+        flash("Purchase recorded successfully!", "success")
 
-        for row in sales_data:
-            table.add_row(row)
+    # Fetch all purchase records to display
+    cursor.execute("""
+        SELECT t.transaction_id, p.product_name, t.quantity, t.total_price, t.transaction_date, t.supplier_name
+        FROM transactions t
+        JOIN products p ON t.product_id = p.id
+        WHERE t.transaction_type = 'purchase'
+        ORDER BY t.transaction_date DESC
+    """)
+    purchase_records = cursor.fetchall()
 
-        print(f"--- Monthly Sales Report for {today.strftime('%B %Y')} ---")
-        print(table)
-
-        cursor.close()
-        conn.close()
-
-    @staticmethod
-    def generateStockReport():
-        conn = Database.getConnection()
-        cursor = conn.cursor()
-        cursor.execute(' SELECT product_name, product_quantity FROM products ')
-        stock_data = cursor.fetchall()
-        table = PrettyTable()
-        table.field_names = ["Product Name", "Stock Quantity"]
-
-        for row in stock_data:
-            table.add_row(row)
-
-        print("--- Current Stock Report ---")
-        print(table)
-
-        cursor.close()
-        conn.close()
-
-class Transactions:
-    @staticmethod
-    def recordSale():
-        conn = Database.getConnection()
-        cursor = conn.cursor()
-
-        try:
-            product_id = int(input("Enter the Product ID: "))
-            quantity = int(input("Enter the Quantity Sold: "))
-            cursor.execute("SELECT product_price, product_quantity FROM products WHERE id = %s", (product_id,))
-            result = cursor.fetchone()
-
-            if not result:
-                print("Invalid Product ID.")
-                return
-
-            product_price, current_quantity = result
-
-            if quantity > current_quantity:
-                print("Insufficient stock. Sale cannot be processed.")
-                return
-
-            total_price = product_price * quantity
-            cursor.execute("INSERT INTO transactions (product_id, quantity, total_price, transaction_date) VALUES (%s, %s, %s, %s)",
-                           (product_id, quantity, total_price, datetime.now()))
-            cursor.execute("UPDATE products SET product_quantity = product_quantity - %s WHERE id = %s",
-                           (quantity, product_id))
-            conn.commit()
-            print(f"Sale recorded successfully. Total Price: {total_price:.2f}")
-        except ValueError:
-            print("Invalid input. Please enter valid numbers.")
-        except Exception as e:
-            print(f"An error occurred: {e}")
-        finally:
-            cursor.close()
-            conn.close()
-
-    @staticmethod
-    def recordPurchase():
-        conn = Database.getConnection()
-        cursor = conn.cursor()
-
-        try:
-            product_id = int(input("Enter the Product ID: "))
-            quantity = int(input("Enter the Quantity Purchased: "))
-            cursor.execute("SELECT product_price FROM products WHERE id = %s", (product_id,))
-            result = cursor.fetchone()
-
-            if not result:
-                print("Invalid Product ID.")
-                return
-
-            product_price = result[0]
-            total_price = product_price * quantity
-
-            cursor.execute("UPDATE products SET product_quantity = product_quantity + %s WHERE id = %s",
-                           (quantity, product_id))
-            conn.commit()
-            print(f"Purchase recorded successfully. Total Cost: {total_price:.2f}")
-        except ValueError:
-            print("Invalid input. Please enter valid numbers.")
-        except Exception as e:
-            print(f"An error occurred: {e}")
-        finally:
-            cursor.close()
-            conn.close()
+    conn.close()
+    return render_template('record_purchase.html', products=products, purchase_records=purchase_records)
 
 if __name__ == '__main__':
     Database.initializeDatabase()
-    run = True
-    while run:
-        Menu.displayStartMenu()
-        try:
-            choice = int(input("Enter your choice: "))
-            if choice < 1 or choice > 3:
-                raise ValueError
-        except ValueError:
-            print("Invalid input. Please enter a number between 1 and 3.")
-            continue
-
-        if choice == 1:
-            success, role = Authentication.login()
-            if success:
-                if role == "admin":
-                    while True:
-                        Menu.displayAdminMenu()
-                        try:
-                            admin_choice = int(input("Enter your choice: "))
-                            if admin_choice < 1 or admin_choice > 9:
-                                raise ValueError
-                        except ValueError:
-                            print("Invalid input. Please enter a number between 1 and 9.")
-
-                        if admin_choice == 1:
-                            Product.viewProducts()
-                        elif admin_choice == 2:
-                            Product.addProduct()
-                        elif admin_choice == 3:
-                            Product.editProduct()
-                        elif admin_choice == 4:
-                            Product.deleteProduct()
-                        elif admin_choice == 5:
-                            Report.generateMonthlyReport()
-                        elif admin_choice == 6:
-                            Report.generateStockReport()
-                        elif admin_choice == 7:
-                            Transactions.recordSale()
-                        elif admin_choice == 8:
-                            Transactions.recordPurchase()
-                        elif admin_choice == 9:
-                            break
-
-                elif role == "staff":
-                    while True:
-                        Menu.displayStaffMenu()
-                        try:
-                            menu_choice = int(input("Enter your choice: "))
-                            if menu_choice < 1 or menu_choice > 5:
-                                raise ValueError
-                        except ValueError:
-                            print("Invalid input. Please enter a number between 1 and 5.")
-                            continue
-
-                        if menu_choice == 1:
-                            Product.viewProducts()
-                        elif menu_choice == 2:
-                            Product.addProduct()
-                        elif menu_choice == 3:
-                            Product.editProduct()
-                        elif menu_choice == 4:
-                            Product.deleteProduct()
-                        elif menu_choice == 5:
-                            break
-
-        elif choice == 2:
-            Authentication.register()
-
-        elif choice == 3:
-            print("Exiting Inventory Management System.")
-            run = False
+    app.run(debug = True)
