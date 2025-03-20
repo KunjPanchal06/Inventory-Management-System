@@ -50,12 +50,12 @@ Create a MySQL database
 Run the database.sql file
 Update main.py with your MySQL credentials
 
-###4️⃣ Run the Application
+### 4️⃣ Run the Application
 ```bash
 python main.py
 ```
 
-##📈 Future Improvements
+## 📈 Future Improvements
 Add REST API endpoints for external integrations
 Implement role-based access control (RBAC) for different user roles
 Integrate barcode scanning for inventory tracking
